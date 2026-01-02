@@ -647,7 +647,7 @@
           </div>
           
           <button class="export-button" id="exportBtn">
-            <i class="fas fa-file-image"></i> 导出为图片
+            <i class="fas fa-file-image"></i> 导出为JPG图片
           </button>
         </div>
       </div>
@@ -685,6 +685,7 @@
     const opacityValue = document.getElementById("opacityValue");
     const grayscaleValue = document.getElementById("grayscaleValue");
 
+    // 恢复原始SVG
     const redSVG = `<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
  width="366.000000pt" height="366.000000pt" viewBox="0 0 366.000000 366.000000"
  preserveAspectRatio="xMidYMid meet">
@@ -791,6 +792,50 @@ fill="CURRENT_COLOR" stroke="none">
 </g>
 </svg>`;
 
+    // 颜色工具函数
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16)
+      ] : [0, 0, 0];
+    }
+
+    function rgbToHex(r, g, b) {
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    // 计算与背景色混合后的颜色
+    function blendColorWithBackground(color, bgColor, opacity) {
+      const [r1, g1, b1] = hexToRgb(color);
+      const [r2, g2, b2] = hexToRgb(bgColor);
+      
+      // 标准alpha混合公式: result = foreground * alpha + background * (1 - alpha)
+      const r = Math.round(r1 * opacity + r2 * (1 - opacity));
+      const g = Math.round(g1 * opacity + g2 * (1 - opacity));
+      const b = Math.round(b1 * opacity + b2 * (1 - opacity));
+      
+      return rgbToHex(r, g, b);
+    }
+
+    // 应用灰度效果
+    function applyGrayscale(color, grayscale) {
+      if (grayscale <= 0) return color;
+      
+      const [r, g, b] = hexToRgb(color);
+      
+      // 标准灰度转换公式
+      const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      
+      // 混合原色和灰度
+      const r2 = Math.round(r * (1 - grayscale) + gray * grayscale);
+      const g2 = Math.round(g * (1 - grayscale) + gray * grayscale);
+      const b2 = Math.round(b * (1 - grayscale) + gray * grayscale);
+      
+      return rgbToHex(r2, g2, b2);
+    }
+
     function updateColorValues() {
       bgColorValue.textContent = bgColorInput.value;
       redColorValue.textContent = redColorInput.value;
@@ -800,21 +845,31 @@ fill="CURRENT_COLOR" stroke="none">
     }
 
     function renderGrid() {
+      console.log("渲染网格，透明度:", opacityInput.value, "灰度:", grayscaleInput.value);
+      
       canvas.innerHTML = "";
       canvas.style.backgroundColor = bgColorInput.value;
-      const opacity = opacityInput.value;
-      const grayscale = grayscaleInput.value;
+      const opacity = parseFloat(opacityInput.value);
+      const grayscale = parseFloat(grayscaleInput.value);
 
       for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 6; col++) {
           const isRed = (row + col) % 2 === 0;
           const svgRaw = isRed ? redSVG : greenSVG;
           const color = isRed ? redColorInput.value : greenColorInput.value;
+          
+          // 计算最终颜色：先与背景色混合，再应用灰度
+          let finalColor = blendColorWithBackground(color, bgColorInput.value, opacity);
+          finalColor = applyGrayscale(finalColor, grayscale);
+          
           const div = document.createElement("div");
-          div.innerHTML = svgRaw.replace(/CURRENT_COLOR/g, color);
+          div.innerHTML = svgRaw.replace(/CURRENT_COLOR/g, finalColor);
           const svg = div.firstElementChild;
-          svg.style.opacity = opacity;
-          svg.style.filter = `grayscale(${grayscale})`;
+          
+          // 不再使用CSS opacity和filter，因为颜色已经计算好了
+          svg.style.opacity = 1;
+          svg.style.filter = "none";
+          
           canvas.appendChild(svg);
         }
       }
@@ -841,7 +896,11 @@ fill="CURRENT_COLOR" stroke="none">
       }
     }
 
+    // 创建高分辨率临时容器
     function createHighResContainer(targetWidth, targetHeight) {
+      console.log("创建高分辨率容器，尺寸:", targetWidth, "x", targetHeight);
+      console.log("透明度:", opacityInput.value, "灰度:", grayscaleInput.value);
+      
       const container = document.createElement("div");
       
       container.style.position = "absolute";
@@ -856,22 +915,31 @@ fill="CURRENT_COLOR" stroke="none">
       container.style.gap = "2px";
       container.style.boxSizing = "border-box";
       
-      const opacity = opacityInput.value;
-      const grayscale = grayscaleInput.value;
+      const opacity = parseFloat(opacityInput.value);
+      const grayscale = parseFloat(grayscaleInput.value);
       
       for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 6; col++) {
           const isRed = (row + col) % 2 === 0;
           const svgRaw = isRed ? redSVG : greenSVG;
           const color = isRed ? redColorInput.value : greenColorInput.value;
+          
+          // 使用相同的颜色计算逻辑
+          let finalColor = blendColorWithBackground(color, bgColorInput.value, opacity);
+          finalColor = applyGrayscale(finalColor, grayscale);
+          
           const div = document.createElement("div");
-          div.innerHTML = svgRaw.replace(/CURRENT_COLOR/g, color);
+          div.innerHTML = svgRaw.replace(/CURRENT_COLOR/g, finalColor);
           const svg = div.firstElementChild;
+          
           svg.style.width = "100%";
           svg.style.height = "100%";
           svg.style.objectFit = "contain";
-          svg.style.opacity = opacity;
-          svg.style.filter = `grayscale(${grayscale})`;
+          svg.style.opacity = 1;
+          svg.style.filter = "none";
+          
+          console.log(`SVG[${row},${col}] 最终颜色:`, finalColor, "原始颜色:", color);
+          
           container.appendChild(svg);
         }
       }
@@ -884,6 +952,11 @@ fill="CURRENT_COLOR" stroke="none">
       const includeInfoChecked = includeInfo.checked;
       const { width: targetWidth, height: targetHeight } = getExportDimensions();
       
+      console.log("开始导出图片");
+      console.log("目标尺寸:", targetWidth, "x", targetHeight);
+      console.log("透明度:", opacityInput.value, "灰度:", grayscaleInput.value);
+      console.log("包含边框:", includeFrameChecked, "包含信息:", includeInfoChecked);
+      
       // 显示导出中状态
       const originalText = exportBtn.innerHTML;
       exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 导出中...';
@@ -894,6 +967,10 @@ fill="CURRENT_COLOR" stroke="none">
       document.body.appendChild(tempContainer);
       
       try {
+        // 等待容器完全渲染
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        console.log("开始html2canvas截图...");
         const canvasData = await html2canvas(tempContainer, {
           backgroundColor: null,
           useCORS: true,
@@ -902,8 +979,11 @@ fill="CURRENT_COLOR" stroke="none">
           height: targetHeight,
           logging: false,
           allowTaint: false,
-          imageTimeout: 15000
+          imageTimeout: 15000,
+          ignoreElements: (element) => false
         });
+        
+        console.log("html2canvas截图完成，开始处理最终图片");
         
         const finalCanvas = document.createElement("canvas");
         const ctx = finalCanvas.getContext("2d");
@@ -929,9 +1009,15 @@ fill="CURRENT_COLOR" stroke="none">
           finalCanvas.width = targetWidth;
           finalCanvas.height = targetHeight;
           
-          ctx.fillStyle = "#ffffff";
+          // 对于JPG格式，确保背景是实色
+          if (includeFrameChecked || includeInfoChecked) {
+            ctx.fillStyle = "#ffffff";
+          } else {
+            ctx.fillStyle = bgColorInput.value;
+          }
           ctx.fillRect(0, 0, targetWidth, targetHeight);
           
+          // 绘制图案
           ctx.drawImage(
             canvasData,
             0, 0, targetWidth, targetHeight,
@@ -984,14 +1070,22 @@ fill="CURRENT_COLOR" stroke="none">
         } else {
           finalCanvas.width = targetWidth;
           finalCanvas.height = targetHeight;
+          
+          // 对于JPG格式，确保背景是实色
+          ctx.fillStyle = bgColorInput.value;
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          
           ctx.drawImage(canvasData, 0, 0);
         }
         
-        // 下载图片
+        // 下载图片 - 改为JPG格式
         const link = document.createElement("a");
-        link.download = `pattern_${targetWidth}x${targetHeight}_${Date.now()}.png`;
-        link.href = finalCanvas.toDataURL("image/png", 1.0);
+        link.download = `pattern_${targetWidth}x${targetHeight}_${Date.now()}.jpg`;
+        // 使用0.92的质量参数，这是JPG的推荐质量设置
+        link.href = finalCanvas.toDataURL("image/jpeg", 0.92);
         link.click();
+        
+        console.log("JPG图片导出完成");
         
         // 显示成功提示
         const successMessage = document.createElement("div");
@@ -1011,7 +1105,7 @@ fill="CURRENT_COLOR" stroke="none">
           gap: 8px;
           animation: slideIn 0.3s ease;
         `;
-        successMessage.innerHTML = `<i class="fas fa-check-circle"></i> 图片导出成功`;
+        successMessage.innerHTML = `<i class="fas fa-check-circle"></i> JPG图片导出成功`;
         document.body.appendChild(successMessage);
         
         setTimeout(() => {
@@ -1089,10 +1183,12 @@ fill="CURRENT_COLOR" stroke="none">
     // 滑块值实时显示
     opacityInput.addEventListener("input", function() {
       opacityValue.textContent = parseFloat(this.value).toFixed(2);
+      renderGrid();
     });
     
     grayscaleInput.addEventListener("input", function() {
       grayscaleValue.textContent = parseFloat(this.value).toFixed(2);
+      renderGrid();
     });
 
     exportBtn.addEventListener("click", exportImage);

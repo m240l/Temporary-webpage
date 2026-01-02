@@ -534,6 +534,105 @@
     .controls-panel::-webkit-scrollbar-thumb:hover {
       background: var(--text-secondary);
     }
+
+    /* 图片预览模态框样式 */
+    .image-preview-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .image-preview-modal.show {
+      display: flex;
+    }
+
+    .image-preview-container {
+      max-width: 90%;
+      max-height: 80%;
+      position: relative;
+    }
+
+    .image-preview-container img {
+      width: 100%;
+      height: auto;
+      max-height: 70vh;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .save-instructions {
+      color: white;
+      text-align: center;
+      margin-top: 20px;
+      font-size: 16px;
+      padding: 0 20px;
+      line-height: 1.5;
+    }
+
+    .save-instructions i {
+      margin-right: 8px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .modal-button {
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .modal-button.download {
+      background: var(--accent-green);
+      color: white;
+    }
+
+    .modal-button.share {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .modal-button.close {
+      background: var(--accent-red);
+      color: white;
+    }
+
+    .close-preview {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: rgba(255, 255, 255, 0.1);
+    }
   </style>
 </head>
 <body>
@@ -647,7 +746,7 @@
           </div>
           
           <button class="export-button" id="exportBtn">
-            <i class="fas fa-file-image"></i> 导出为JPG图片
+            <i class="fas fa-file-image"></i> 导出图片
           </button>
         </div>
       </div>
@@ -660,6 +759,28 @@
           <div class="canvas-wrapper" id="canvas"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 图片预览模态框 -->
+  <div class="image-preview-modal" id="imagePreviewModal">
+    <button class="close-preview" id="closePreview">
+      <i class="fas fa-times"></i>
+    </button>
+    <div class="image-preview-container">
+      <img id="previewImage" src="" alt="生成的图片预览">
+    </div>
+    <div class="save-instructions" id="saveInstructions">
+      <p><i class="fas fa-mobile-alt"></i> 在手机上：长按图片，然后选择"保存到相册"</p>
+      <p><i class="fas fa-desktop"></i> 在电脑上：右键点击图片，选择"图片另存为"</p>
+    </div>
+    <div class="modal-buttons">
+      <button class="modal-button download" id="downloadImageBtn">
+        <i class="fas fa-download"></i> 下载图片
+      </button>
+      <button class="modal-button share" id="shareImageBtn">
+        <i class="fas fa-share"></i> 分享图片
+      </button>
     </div>
   </div>
 
@@ -684,6 +805,14 @@
     const greenColorValue = document.getElementById("greenColorValue");
     const opacityValue = document.getElementById("opacityValue");
     const grayscaleValue = document.getElementById("grayscaleValue");
+    
+    // 图片预览元素
+    const imagePreviewModal = document.getElementById("imagePreviewModal");
+    const previewImage = document.getElementById("previewImage");
+    const closePreview = document.getElementById("closePreview");
+    const downloadImageBtn = document.getElementById("downloadImageBtn");
+    const shareImageBtn = document.getElementById("shareImageBtn");
+    const saveInstructions = document.getElementById("saveInstructions");
 
     // 恢复原始SVG
     const redSVG = `<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
@@ -845,8 +974,6 @@ fill="CURRENT_COLOR" stroke="none">
     }
 
     function renderGrid() {
-      console.log("渲染网格，透明度:", opacityInput.value, "灰度:", grayscaleInput.value);
-      
       canvas.innerHTML = "";
       canvas.style.backgroundColor = bgColorInput.value;
       const opacity = parseFloat(opacityInput.value);
@@ -898,9 +1025,6 @@ fill="CURRENT_COLOR" stroke="none">
 
     // 创建高分辨率临时容器
     function createHighResContainer(targetWidth, targetHeight) {
-      console.log("创建高分辨率容器，尺寸:", targetWidth, "x", targetHeight);
-      console.log("透明度:", opacityInput.value, "灰度:", grayscaleInput.value);
-      
       const container = document.createElement("div");
       
       container.style.position = "absolute";
@@ -938,8 +1062,6 @@ fill="CURRENT_COLOR" stroke="none">
           svg.style.opacity = 1;
           svg.style.filter = "none";
           
-          console.log(`SVG[${row},${col}] 最终颜色:`, finalColor, "原始颜色:", color);
-          
           container.appendChild(svg);
         }
       }
@@ -947,19 +1069,18 @@ fill="CURRENT_COLOR" stroke="none">
       return container;
     }
 
+    // 存储当前生成的图片数据
+    let currentImageDataUrl = '';
+    let currentImageBlob = null;
+
     async function exportImage() {
       const includeFrameChecked = includeFrame.checked;
       const includeInfoChecked = includeInfo.checked;
       const { width: targetWidth, height: targetHeight } = getExportDimensions();
       
-      console.log("开始导出图片");
-      console.log("目标尺寸:", targetWidth, "x", targetHeight);
-      console.log("透明度:", opacityInput.value, "灰度:", grayscaleInput.value);
-      console.log("包含边框:", includeFrameChecked, "包含信息:", includeInfoChecked);
-      
       // 显示导出中状态
       const originalText = exportBtn.innerHTML;
-      exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 导出中...';
+      exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中...';
       exportBtn.disabled = true;
       
       // 创建高分辨率临时容器
@@ -970,7 +1091,6 @@ fill="CURRENT_COLOR" stroke="none">
         // 等待容器完全渲染
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        console.log("开始html2canvas截图...");
         const canvasData = await html2canvas(tempContainer, {
           backgroundColor: null,
           useCORS: true,
@@ -982,8 +1102,6 @@ fill="CURRENT_COLOR" stroke="none">
           imageTimeout: 15000,
           ignoreElements: (element) => false
         });
-        
-        console.log("html2canvas截图完成，开始处理最终图片");
         
         const finalCanvas = document.createElement("canvas");
         const ctx = finalCanvas.getContext("2d");
@@ -1078,43 +1196,33 @@ fill="CURRENT_COLOR" stroke="none">
           ctx.drawImage(canvasData, 0, 0);
         }
         
-        // 下载图片 - 改为JPG格式
-        const link = document.createElement("a");
-        link.download = `pattern_${targetWidth}x${targetHeight}_${Date.now()}.jpg`;
-        // 使用0.92的质量参数，这是JPG的推荐质量设置
-        link.href = finalCanvas.toDataURL("image/jpeg", 0.92);
-        link.click();
+        // 存储图片数据用于预览和分享
+        currentImageDataUrl = finalCanvas.toDataURL("image/jpeg", 0.92);
         
-        console.log("JPG图片导出完成");
+        // 转换为Blob用于分享
+        finalCanvas.toBlob((blob) => {
+          currentImageBlob = blob;
+        }, 'image/jpeg', 0.92);
         
-        // 显示成功提示
-        const successMessage = document.createElement("div");
-        successMessage.style.cssText = `
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: var(--accent-green);
-          color: white;
-          padding: 12px 20px;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-          z-index: 1000;
-          font-weight: 500;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          animation: slideIn 0.3s ease;
-        `;
-        successMessage.innerHTML = `<i class="fas fa-check-circle"></i> JPG图片导出成功`;
-        document.body.appendChild(successMessage);
+        // 显示图片预览
+        previewImage.src = currentImageDataUrl;
+        imagePreviewModal.classList.add('show');
         
-        setTimeout(() => {
-          successMessage.style.animation = "slideOut 0.3s ease";
-          setTimeout(() => document.body.removeChild(successMessage), 300);
-        }, 3000);
+        // 根据设备类型显示不同的保存说明
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+          saveInstructions.innerHTML = `
+            <p><i class="fas fa-mobile-alt"></i> 在手机上：长按图片，然后选择"保存到相册"</p>
+            <p><i class="fas fa-info-circle"></i> 提示：您也可以点击"分享图片"按钮保存到相册</p>
+          `;
+        } else {
+          saveInstructions.innerHTML = `
+            <p><i class="fas fa-desktop"></i> 在电脑上：右键点击图片，选择"图片另存为"</p>
+            <p><i class="fas fa-info-circle"></i> 提示：您也可以点击"下载图片"按钮保存图片</p>
+          `;
+        }
         
       } catch (error) {
-        console.error("导出图片时出错:", error);
+        console.error("生成图片时出错:", error);
         
         // 显示错误提示
         const errorMessage = document.createElement("div");
@@ -1134,7 +1242,7 @@ fill="CURRENT_COLOR" stroke="none">
           gap: 8px;
           animation: slideIn 0.3s ease;
         `;
-        errorMessage.innerHTML = `<i class="fas fa-exclamation-circle"></i> 导出失败: ${error.message}`;
+        errorMessage.innerHTML = `<i class="fas fa-exclamation-circle"></i> 生成失败: ${error.message}`;
         document.body.appendChild(errorMessage);
         
         setTimeout(() => {
@@ -1149,6 +1257,78 @@ fill="CURRENT_COLOR" stroke="none">
         // 清理临时容器
         document.body.removeChild(tempContainer);
       }
+    }
+
+    // 下载图片函数
+    function downloadImage() {
+      if (!currentImageDataUrl) return;
+      
+      const { width: targetWidth, height: targetHeight } = getExportDimensions();
+      const link = document.createElement("a");
+      link.download = `pattern_${targetWidth}x${targetHeight}_${Date.now()}.jpg`;
+      link.href = currentImageDataUrl;
+      link.click();
+      
+      // 显示下载成功提示
+      const successMessage = document.createElement("div");
+      successMessage.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--accent-green);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 1001;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        animation: slideIn 0.3s ease;
+      `;
+      successMessage.innerHTML = `<i class="fas fa-check-circle"></i> 图片已开始下载`;
+      document.body.appendChild(successMessage);
+      
+      setTimeout(() => {
+        successMessage.style.animation = "slideOut 0.3s ease";
+        setTimeout(() => document.body.removeChild(successMessage), 300);
+      }, 3000);
+    }
+
+    // 分享图片函数
+    async function shareImage() {
+      if (!currentImageBlob) {
+        // 如果没有blob，先创建
+        const response = await fetch(currentImageDataUrl);
+        currentImageBlob = await response.blob();
+      }
+      
+      const { width: targetWidth, height: targetHeight } = getExportDimensions();
+      const fileName = `pattern_${targetWidth}x${targetHeight}_${Date.now()}.jpg`;
+      const file = new File([currentImageBlob], fileName, { type: 'image/jpeg' });
+      
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: '图案调色模拟器生成的图片',
+            text: '使用图案调色模拟器生成的图片'
+          });
+        } catch (error) {
+          console.log('分享失败:', error);
+          // 如果分享失败，回退到下载
+          downloadImage();
+        }
+      } else {
+        // 如果不支持分享，回退到下载
+        downloadImage();
+      }
+    }
+
+    // 关闭预览
+    function closeImagePreview() {
+      imagePreviewModal.classList.remove('show');
     }
 
     // 添加动画样式
@@ -1191,7 +1371,18 @@ fill="CURRENT_COLOR" stroke="none">
       renderGrid();
     });
 
+    // 按钮事件监听
     exportBtn.addEventListener("click", exportImage);
+    closePreview.addEventListener("click", closeImagePreview);
+    downloadImageBtn.addEventListener("click", downloadImage);
+    shareImageBtn.addEventListener("click", shareImage);
+
+    // 点击模态框背景关闭
+    imagePreviewModal.addEventListener("click", function(e) {
+      if (e.target === imagePreviewModal) {
+        closeImagePreview();
+      }
+    });
 
     // 初始化渲染
     renderGrid();

@@ -43,15 +43,41 @@
       border: 1px solid #444;
       font-size: 14px;
     }
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #222;
+      border: 1px solid #444;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .radio-group label:hover {
+      background: #333;
+    }
+    .radio-group input[type="radio"]:checked + span {
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+    .radio-group input[type="radio"] {
+      margin-right: 10px;
+      accent-color: #4fc3f7;
+    }
     #controls small {
       display: block;
       margin-top: 8px;
       font-size: 12px;
       opacity: 0.8;
     }
-    canvas {
-      display: block;
-    }
+    canvas { display: block; }
   </style>
 
   <script type="importmap">
@@ -68,8 +94,23 @@
     <h3>超薄相框查看器</h3>
     <p style="margin:8px 0 16px;font-size:13px;">鼠标左键旋转 | 滚轮缩放 | 右键平移</p>
 
-    <label for="modelSelect">相框型号</label>
-    <select id="modelSelect"></select>
+    <label>是否带钥匙扣</label>
+    <div class="radio-group">
+      <label>
+        <input type="radio" name="keychain" value="yes" checked>
+        <span>带钥匙扣</span>
+      </label>
+      <label>
+        <input type="radio" name="keychain" value="no">
+        <span>不带钥匙扣</span>
+      </label>
+    </div>
+
+    <label for="sizeSelect">玻璃尺寸</label>
+    <select id="sizeSelect">
+      <option value="25x76">25.4 × 76.2 mm</option>
+      <option value="65x65">65 × 65 mm</option>
+    </select>
 
     <label for="typeSelect">耗材类型</label>
     <select id="typeSelect"></select>
@@ -77,7 +118,7 @@
     <label for="colorSelect">颜色</label>
     <select id="colorSelect"></select>
 
-    <small id="modelInfo"></small>
+    <small id="modelInfo">加载中...</small>
   </div>
 
   <script type="module">
@@ -85,31 +126,26 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 
-    // ── 四个相框模型（中文名称） ───────────────────────────────────────────────
-    const frames = [
-      {
-        name: "小钥匙扣相框 25x76",
-        file: "mini_keychain_25x76.stl",  // ← 替换成你的实际文件名
+    // 模型路径统一改到 stl/ 文件夹下（相对路径）
+    const modelMap = {
+      "25x76_yes": {
+        file: "stl/mini_keychain_25x76.stl",
         desc: "带钥匙扣 · 玻璃尺寸 25.4 × 76.2 mm · 厚度 3mm"
       },
-      {
-        name: "小型相框 25x76",
-        file: "mini_frame_25x76.stl",
+      "25x76_no": {
+        file: "stl/mini_frame_25x76.stl",
         desc: "无钥匙扣 · 玻璃尺寸 25.4 × 76.2 mm · 厚度 3mm"
       },
-      {
-        name: "方形钥匙扣相框 65",
-        file: "square_keychain_65.stl",
+      "65x65_yes": {
+        file: "stl/square_keychain_65.stl",
         desc: "带钥匙扣 · 玻璃尺寸 65 × 65 mm · 厚度 3mm"
       },
-      {
-        name: "方形相框 65",
-        file: "square_frame_65.stl",
+      "65x65_no": {
+        file: "stl/square_frame_65.stl",
         desc: "无钥匙扣 · 玻璃尺寸 65 × 65 mm · 厚度 3mm"
       }
-    ];
+    };
 
-    // ── Three.js 基础设置 ────────────────────────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0a0a);
 
@@ -124,7 +160,6 @@
     controls.dampingFactor = 0.12;
     controls.rotateSpeed = 0.9;
 
-    // ── 灯光（修正写法） ─────────────────────────────────────────────────────
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
     const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.8);
@@ -142,7 +177,6 @@
     let currentMesh = null;
     let currentMaterial = null;
 
-    // ── 创建材质（不透光 + 光泽塑料） ────────────────────────────────────
     function createMaterial(colorHex = 0xffffff) {
       return new THREE.MeshPhysicalMaterial({
         color: new THREE.Color(colorHex),
@@ -156,81 +190,72 @@
         side: THREE.DoubleSide
       });
     }
-
     currentMaterial = createMaterial();
 
-    // ── 加载模型函数 ─────────────────────────────────────────────────────
-    function loadFrame(index) {
+    function loadFrame(size, hasKeychain) {
       if (currentMesh) {
         scene.remove(currentMesh);
         currentMesh.geometry.dispose();
         currentMesh = null;
       }
 
-      const frame = frames[index];
-      document.getElementById('modelInfo').textContent = frame.desc;
+      const key = `${size}_${hasKeychain}`;
+      const model = modelMap[key];
+
+      if (!model) {
+        document.getElementById('modelInfo').textContent = '模型配置无效';
+        return;
+      }
+
+      document.getElementById('modelInfo').textContent = model.desc + '（加载中...）';
 
       const loader = new STLLoader();
       loader.load(
-        frame.file,
+        model.file,
         (geometry) => {
           geometry.computeVertexNormals();
-
           currentMesh = new THREE.Mesh(geometry, currentMaterial);
-
           geometry.computeBoundingBox();
           const center = new THREE.Vector3();
           geometry.boundingBox.getCenter(center);
           currentMesh.position.copy(center).multiplyScalar(-1);
-
           scene.add(currentMesh);
-
           camera.position.set(80, 60, 100);
           controls.target.set(0, 0, 0);
           controls.update();
+          document.getElementById('modelInfo').textContent = model.desc + '（已加载）';
         },
         undefined,
         (err) => {
-          console.error('加载失败:', frame.file, err);
-          alert(`无法加载模型文件：${frame.file}\n请确认文件存在且文件名正确。`);
+          console.error('加载失败:', model.file, err);
+          document.getElementById('modelInfo').textContent = `加载失败：${model.file}`;
         }
       );
     }
 
-    // ── 填充相框选择 ─────────────────────────────────────────────────────
-    const modelSelect = document.getElementById('modelSelect');
-    frames.forEach((frame, i) => {
-      const opt = document.createElement('option');
-      opt.value = i;
-      opt.textContent = frame.name;
-      modelSelect.appendChild(opt);
+    function updateModel() {
+      const size = document.getElementById('sizeSelect').value;
+      const hasKeychain = document.querySelector('input[name="keychain"]:checked').value === 'yes' ? 'yes' : 'no';
+      loadFrame(size, hasKeychain);
+    }
+
+    document.getElementById('sizeSelect').addEventListener('change', updateModel);
+    document.querySelectorAll('input[name="keychain"]').forEach(radio => {
+      radio.addEventListener('change', updateModel);
     });
 
-    modelSelect.addEventListener('change', e => {
-      loadFrame(parseInt(e.target.value));
-    });
-
-    // ── 从 Bambu.json 加载颜色数据 ───────────────────────────────────────
     let filaments = null;
-
     fetch('Bambu.json')
-      .then(r => {
-        if (!r.ok) throw new Error('Bambu.json 读取失败');
-        return r.json();
-      })
+      .then(r => r.ok ? r.json() : Promise.reject('读取失败'))
       .then(data => {
         filaments = data;
-
         const typeSelect = document.getElementById('typeSelect');
-        typeSelect.innerHTML = '';
-
         Object.keys(data).forEach(type => {
           const opt = document.createElement('option');
           opt.value = type;
           opt.textContent = type;
           typeSelect.appendChild(opt);
         });
-
         if (typeSelect.options.length > 0) {
           typeSelect.selectedIndex = 0;
           typeSelect.dispatchEvent(new Event('change'));
@@ -241,12 +266,10 @@
         document.getElementById('typeSelect').innerHTML = '<option>颜色数据加载失败</option>';
       });
 
-    // 类型改变 → 更新颜色列表
     document.getElementById('typeSelect').addEventListener('change', () => {
       const type = document.getElementById('typeSelect').value;
       const colorSelect = document.getElementById('colorSelect');
       colorSelect.innerHTML = '';
-
       if (filaments && filaments[type]) {
         filaments[type].forEach(item => {
           const opt = document.createElement('option');
@@ -254,7 +277,6 @@
           opt.textContent = item['颜色'];
           colorSelect.appendChild(opt);
         });
-
         if (colorSelect.options.length > 0) {
           colorSelect.selectedIndex = 0;
           updateColor(colorSelect.value);
@@ -262,7 +284,6 @@
       }
     });
 
-    // 颜色改变 → 更新材质
     document.getElementById('colorSelect').addEventListener('change', e => {
       updateColor(e.target.value);
     });
@@ -274,14 +295,12 @@
       }
     }
 
-    // ── 窗口大小变化 ─────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // ── 动画循环 ─────────────────────────────────────────────────────────
     function animate() {
       requestAnimationFrame(animate);
       controls.update();
@@ -289,8 +308,8 @@
     }
     animate();
 
-    // 初始加载第一个模型
-    loadFrame(0);
+    // 初始加载
+    updateModel();
   </script>
 </body>
 </html>

@@ -124,11 +124,20 @@
     controls.dampingFactor = 0.12;
     controls.rotateSpeed = 0.9;
 
-    // 灯光
+    // ── 灯光（修正写法） ─────────────────────────────────────────────────────
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    scene.add(new THREE.DirectionalLight(0xffffff, 2.8).position.set(100, 140, 120));
-    scene.add(new THREE.DirectionalLight(0xffffff, 1.8).position.set(-90, 110, -90));
-    scene.add(new THREE.PointLight(0xffffff, 2.0, 500).position.set(60, 120, 80));
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.8);
+    dirLight1.position.set(100, 140, 120);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.8);
+    dirLight2.position.set(-90, 110, -90);
+    scene.add(dirLight2);
+
+    const pointLight = new THREE.PointLight(0xffffff, 2.0, 500);
+    pointLight.position.set(60, 120, 80);
+    scene.add(pointLight);
 
     let currentMesh = null;
     let currentMaterial = null;
